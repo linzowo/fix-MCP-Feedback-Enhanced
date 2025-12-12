@@ -224,7 +224,7 @@ mcp-feedback-enhanced web [OPTIONS]
 | `--port` | `int` | `8000` | 服務埠號 |
 | `--debug` | `bool` | `False` | 啟用調試模式 |
 | `--no-browser` | `bool` | `False` | 不自動開啟瀏覽器 |
-| `--timeout` | `int` | `600` | 預設會話超時時間（秒） |
+| `--timeout` | `int` | `86400` | 預設會話超時時間（秒） |
 | `--audio-enabled` | `bool` | `True` | 啟用音效通知（v2.4.3 新增） |
 | `--session-retention` | `int` | `72` | 會話歷史保存時間（小時，v2.4.3 新增） |
 
@@ -235,7 +235,7 @@ mcp-feedback-enhanced web [OPTIONS]
 export MCP_FEEDBACK_HOST=0.0.0.0
 export MCP_FEEDBACK_PORT=9000
 export MCP_FEEDBACK_DEBUG=true
-export MCP_FEEDBACK_TIMEOUT=1200
+export MCP_FEEDBACK_TIMEOUT=86400
 export MCP_FEEDBACK_AUDIO_ENABLED=true
 export MCP_FEEDBACK_SESSION_RETENTION=72
 ```
@@ -250,7 +250,7 @@ export MCP_FEEDBACK_SESSION_RETENTION=72
         "debug": false
     },
     "session": {
-        "timeout": 600,
+        "timeout": 86400,
         "max_connections": 5
     },
     "ui": {

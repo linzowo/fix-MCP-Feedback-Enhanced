@@ -454,7 +454,7 @@ async def interactive_feedback(
     Args:
         project_directory: Project directory path for context
         summary: Summary of AI work completed for user review
-        timeout: Timeout in seconds for waiting user feedback (default: 600 seconds)
+        timeout: Timeout in seconds for waiting user feedback (default: 86400 seconds)
 
     Returns:
         list: List containing TextContent and MCPImage objects representing user feedback

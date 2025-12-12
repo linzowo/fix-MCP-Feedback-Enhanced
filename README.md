@@ -2,7 +2,8 @@
 
 ## 🔧 本地定制版本说明
 
-> 感谢[原作者](https://github.com/Minidoracat/mcp-feedback-enhanced)的反馈项目，本版本修复了以下问题并新增功能：
+> 感谢[原作者](https://github.com/Minidoracat/mcp-feedback-enhanced)的反馈项目，
+> 本版本修复了以下问题并新增功能：
 
 ### ✅ 已修复问题
 
@@ -50,25 +51,32 @@ Fork 本项目到本地，在 Cursor 中配置：
 
 ### 📸 界面预览
 
+<em>1.支持提示管理、自动提交、会话跟踪上传图片等功能</em>
+
 <div align="center">
   <img src="images/0.png" width="600" alt="MCP Feedback Enhanced 界面预览" />
   <br>
-  <em>主界面 - 支持提示管理、自动提交、会话跟踪上传图片等功能</em>
 </div>
+
+<em>2.超时功能展示 - 默认等待24小时</em>
 
 <div align="center">
   <img src="images/1.png" width="600" alt="MCP Feedback Enhanced 功能展示" />
   <br>
-  <em>超时功能展示 - 智能工作流程和现代化体验</em>
 </div>
 
 ## 📣 将下面规则设置为全局规则
+
 ### MCP Interactive Feedback 规则
-1. 在任何流程、任务、对话进行时，无论是询问、回复、或完成阶段性任务，皆必须调用 MCP mcp-feedback-enhanced。
-2. 每当收到用户反馈，若反馈内容非空，必须再次调用 MCP mcp-feedback-enhanced，并根据反馈内容调整行为。
-3. 仅当用户明确表示「结束」或「不再需要交互」时，才可停止调用 MCP mcp-feedback-enhanced，流程才算结束。
+
+1. 在任何流程、任务、对话进行时，无论是询问、回复、或完成阶段性任务，皆必须调用
+   MCP mcp-feedback-enhanced。
+2. 每当收到用户反馈，若反馈内容非空，必须再次调用 MCP mcp-feedback-enhanced，并
+   根据反馈内容调整行为。
+3. 仅当用户明确表示「结束」或「不再需要交互」时，才可停止调用 MCP
+   mcp-feedback-enhanced，流程才算结束。
 4. 除非收到结束指令，否则所有步骤都必须重复调用 MCP mcp-feedback-enhanced。
-5. 完成任务前，必须使用 MCP mcp-feedback-enhanced 工具向用户询问反馈。
-6.将默认超时时间设置为86400
+5. 完成任务前，必须使用 MCP mcp-feedback-enhanced 工具向用户询问反馈。 6.将默认
+   超时时间设置为 86400
 
 ---
