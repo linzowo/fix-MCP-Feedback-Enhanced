@@ -62,7 +62,7 @@ Fork 本项目到本地，在 Cursor 中配置：
   <em>超时功能展示 - 智能工作流程和现代化体验</em>
 </div>
 
-## 将一下规则设置为全局规则
+## 📣 将下面规则设置为全局规则
 ### MCP Interactive Feedback 规则
 1. 在任何流程、任务、对话进行时，无论是询问、回复、或完成阶段性任务，皆必须调用 MCP mcp-feedback-enhanced。
 2. 每当收到用户反馈，若反馈内容非空，必须再次调用 MCP mcp-feedback-enhanced，并根据反馈内容调整行为。
