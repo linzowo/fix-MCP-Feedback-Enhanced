@@ -335,9 +335,17 @@ class WebUIManager:
             old_websocket = old_session.websocket
             debug_log("保存舊會話的 WebSocket 連接以發送更新通知")
 
-        # 創建新會話
-        session_id = str(uuid.uuid4())
-        session = WebFeedbackSession(session_id, project_directory, summary)
+        # ➕ 生成项目唯一标识
+        project_id = WebFeedbackSession._generate_project_id(project_directory)
+        
+        # 創建新會話，傳遞項目 ID
+        session_id = f"{project_id}_{uuid.uuid4().hex[:8]}_{int(time.time())}"
+        session = WebFeedbackSession(
+            session_id, 
+            project_directory, 
+            summary,
+            project_id=project_id  # ➕ 傳遞項目 ID
+        )
 
         # 如果有舊會話，處理狀態轉換和清理
         if old_session:
@@ -1048,6 +1056,14 @@ class WebUIManager:
 
     def stop(self):
         """停止 Web UI 服務"""
+        # ➕ 釋放端口鎖
+        try:
+            from .utils.port_manager import PortManager
+            PortManager.release_port_lock(self.port)
+            debug_log(f"✅ 已釋放端口 {self.port} 的鎖文件")
+        except Exception as e:
+            debug_log(f"釋放端口鎖時發生錯誤: {e}")
+        
         # 清理所有會話
         cleanup_start_time = time.time()
         session_count = len(self.sessions)

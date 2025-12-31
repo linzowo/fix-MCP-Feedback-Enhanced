@@ -5,15 +5,24 @@
 - 智能端口查找
 - 進程檢測和清理
 - 端口衝突解決
+- 端口鎖文件機制（防止多項目競態條件）
+- 端口範圍配置支持
 """
 
+import os
 import socket
+import sys
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 import psutil
 
 from ...debug import debug_log
+
+# 端口鎖文件目錄
+PORT_LOCK_DIR = Path(tempfile.gettempdir()) / "mcp-feedback-ports"
 
 
 class PortManager:
@@ -110,7 +119,7 @@ class PortManager:
     @staticmethod
     def is_port_available(host: str, port: int) -> bool:
         """
-        檢查端口是否可用
+        檢查端口是否可用（增強版：包含鎖文件檢查）
 
         Args:
             host: 主機地址
@@ -119,17 +128,17 @@ class PortManager:
         Returns:
             bool: 端口是否可用
         """
+        # 確保 psutil 在函數作用域內可用
+        import psutil
+        
         try:
-            # 首先嘗試不使用 SO_REUSEADDR 來檢測端口
+            # 1. 傳統 socket 檢查
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.bind((host, port))
-                return True
         except OSError:
             # 如果綁定失敗，再檢查是否真的有進程在監聽
             # 使用 psutil 檢查是否有進程在監聽該端口
             try:
-                import psutil
-
                 for conn in psutil.net_connections(kind="inet"):
                     if (
                         conn.laddr.port == port
@@ -138,10 +147,125 @@ class PortManager:
                     ):
                         return False
                 # 沒有找到監聽的進程，可能是臨時占用，認為可用
-                return True
             except Exception:
                 # 如果 psutil 檢查失敗，保守地認為端口不可用
                 return False
+
+        # 2. 檢查鎖文件（避免多進程競態條件）
+        try:
+            PORT_LOCK_DIR.mkdir(parents=True, exist_ok=True)
+            lock_file = PORT_LOCK_DIR / f"port_{port}.lock"
+
+            if lock_file.exists():
+                # 檢查鎖文件是否過期（進程可能已死）
+                try:
+                    lock_age = time.time() - lock_file.stat().st_mtime
+                    if lock_age > 60:  # 鎖文件超過 60 秒視為僵尸鎖
+                        debug_log(f"清理端口 {port} 的僵尸鎖文件（年齡: {lock_age:.1f}秒）")
+                        try:
+                            lock_file.unlink()
+                        except Exception:
+                            pass  # 忽略刪除錯誤
+                    else:
+                        # 讀取鎖文件內容檢查進程是否存活
+                        try:
+                            with open(lock_file, "r") as f:
+                                content = f.read().strip()
+                        except Exception:
+                            content = ""
+                        
+                        if content:
+                            try:
+                                lock_pid = int(content.split("\n")[0])
+                                # 檢查進程是否存在
+                                if not psutil.pid_exists(lock_pid):
+                                    debug_log(
+                                        f"清理端口 {port} 的過期鎖文件（進程 {lock_pid} 已不存在）"
+                                    )
+                                    try:
+                                        lock_file.unlink()
+                                    except Exception:
+                                        pass  # 忽略刪除錯誤
+                                else:
+                                    debug_log(f"端口 {port} 被進程 {lock_pid} 鎖定")
+                                    return False
+                            except (ValueError, IndexError):
+                                # 鎖文件格式錯誤，刪除
+                                debug_log(f"清理端口 {port} 的損壞鎖文件")
+                                try:
+                                    lock_file.unlink()
+                                except Exception:
+                                    pass  # 忽略刪除錯誤
+                except Exception as e:
+                    debug_log(f"檢查端口 {port} 鎖文件時發生錯誤: {e}")
+                    # 繼續嘗試創建鎖文件，而不是直接返回 False
+
+            # 3. 嘗試創建鎖文件
+            try:
+                with open(lock_file, "w") as f:
+                    f.write(f"{os.getpid()}\n{time.time():.0f}\n{host}")
+                debug_log(f"為端口 {port} 創建鎖文件（PID: {os.getpid()}）")
+                return True
+            except Exception as e:
+                debug_log(f"為端口 {port} 創建鎖文件失敗: {e}")
+                return False
+
+        except Exception as e:
+            debug_log(f"端口 {port} 鎖文件操作失敗: {e}")
+            # 鎖文件機制失敗時，回退到 socket 檢查結果
+            return True
+
+    @staticmethod
+    def release_port_lock(port: int):
+        """
+        釋放端口鎖（在服務器關閉時調用）
+
+        Args:
+            port: 要釋放鎖的端口號
+        """
+        try:
+            lock_file = PORT_LOCK_DIR / f"port_{port}.lock"
+            if lock_file.exists():
+                # 驗證是否是當前進程創建的鎖
+                try:
+                    with open(lock_file, "r") as f:
+                        content = f.read().strip()
+                except Exception:
+                    content = ""
+                
+                if content:
+                    try:
+                        lock_pid = int(content.split("\n")[0])
+                        if lock_pid == os.getpid():
+                            # 延遲一下確保文件句柄關閉
+                            time.sleep(0.1)
+                            try:
+                                lock_file.unlink()
+                                debug_log(f"成功釋放端口 {port} 的鎖文件")
+                            except PermissionError:
+                                # Windows 上可能需要多次嘗試
+                                for i in range(3):
+                                    time.sleep(0.2)
+                                    try:
+                                        lock_file.unlink()
+                                        debug_log(f"成功釋放端口 {port} 的鎖文件（第 {i+2} 次嘗試）")
+                                        break
+                                    except:
+                                        if i == 2:
+                                            debug_log(f"無法釋放端口 {port} 的鎖文件（文件被鎖定）")
+                        else:
+                            debug_log(
+                                f"端口 {port} 的鎖文件屬於其他進程（PID: {lock_pid}），跳過釋放"
+                            )
+                    except (ValueError, IndexError):
+                        # 格式錯誤，直接刪除
+                        try:
+                            lock_file.unlink()
+                            debug_log(f"清理端口 {port} 的損壞鎖文件")
+                        except Exception:
+                            pass
+        except Exception as e:
+            debug_log(f"釋放端口 {port} 鎖文件時發生錯誤: {e}")
 
     @staticmethod
     def find_free_port_enhanced(
@@ -151,7 +275,7 @@ class PortManager:
         max_attempts: int = 100,
     ) -> int:
         """
-        增強的端口查找功能
+        增強的端口查找功能（支持端口範圍配置）
 
         Args:
             preferred_port: 偏好端口號
@@ -165,9 +289,32 @@ class PortManager:
         Raises:
             RuntimeError: 如果找不到可用端口
         """
+        # 解析環境變數端口範圍
+        port_range_str = os.getenv("MCP_WEB_PORT_RANGE", "")
+        if port_range_str and "-" in port_range_str:
+            try:
+                start_port, end_port = map(int, port_range_str.split("-"))
+                if start_port >= 1024 and end_port <= 65535 and start_port < end_port:
+                    debug_log(
+                        f"使用環境變數配置的端口範圍: {start_port}-{end_port}"
+                    )
+                    port_range = range(start_port, end_port + 1)
+                else:
+                    debug_log(
+                        f"MCP_WEB_PORT_RANGE 值無效 ({port_range_str})，使用默認範圍"
+                    )
+                    port_range = range(preferred_port, preferred_port + max_attempts)
+            except ValueError:
+                debug_log(
+                    f"MCP_WEB_PORT_RANGE 格式錯誤 ({port_range_str})，使用默認範圍"
+                )
+                port_range = range(preferred_port, preferred_port + max_attempts)
+        else:
+            port_range = range(preferred_port, preferred_port + max_attempts)
+
         # 首先嘗試偏好端口
         if PortManager.is_port_available(host, preferred_port):
-            debug_log(f"偏好端口 {preferred_port} 可用")
+            debug_log(f"✅ 偏好端口 {preferred_port} 可用")
             return preferred_port
 
         # 如果偏好端口被占用且啟用自動清理
@@ -185,31 +332,29 @@ class PortManager:
                     if PortManager.kill_process_on_port(preferred_port):
                         # 等待一下讓端口釋放
                         time.sleep(1)
+                        # 釋放舊的鎖文件
+                        PortManager.release_port_lock(preferred_port)
                         if PortManager.is_port_available(host, preferred_port):
-                            debug_log(f"成功清理端口 {preferred_port}，現在可用")
+                            debug_log(f"✅ 成功清理端口 {preferred_port}，現在可用")
                             return preferred_port
 
-        # 如果偏好端口仍不可用，尋找其他端口
-        debug_log(f"偏好端口 {preferred_port} 不可用，尋找其他可用端口")
+        # 如果偏好端口仍不可用，在端口範圍內尋找
+        debug_log(
+            f"偏好端口 {preferred_port} 不可用，在範圍 {port_range.start}-{port_range.stop-1} 內查找"
+        )
 
-        for i in range(max_attempts):
-            port = preferred_port + i + 1
+        for port in port_range:
+            if port == preferred_port:
+                continue  # 已經檢查過
             if PortManager.is_port_available(host, port):
-                debug_log(f"找到可用端口: {port}")
+                debug_log(f"✅ 找到可用端口: {port}")
                 return port
 
-        # 如果向上查找失敗，嘗試向下查找
-        for i in range(1, min(preferred_port - 1024, max_attempts)):
-            port = preferred_port - i
-            if port < 1024:  # 避免使用系統保留端口
-                break
-            if PortManager.is_port_available(host, port):
-                debug_log(f"找到可用端口: {port}")
-                return port
-
+        # 如果端口範圍查找失敗，拋出異常
         raise RuntimeError(
-            f"無法在 {preferred_port}±{max_attempts} 範圍內找到可用端口。"
-            f"請檢查是否有過多進程占用端口，或手動指定其他端口。"
+            f"無法在範圍 {port_range.start}-{port_range.stop-1} 內找到可用端口。\n"
+            f"請檢查是否有過多 MCP 實例運行，或配置 MCP_WEB_PORT_RANGE 環境變數擴大範圍。\n"
+            f"示例: export MCP_WEB_PORT_RANGE=\"8765-8874\"  # 支持 110 個並發項目"
         )
 
     @staticmethod

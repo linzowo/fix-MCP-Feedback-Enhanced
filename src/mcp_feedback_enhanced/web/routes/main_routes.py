@@ -85,6 +85,9 @@ def setup_routes(manager: "WebUIManager"):
                 "version": __version__,
                 "has_session": True,
                 "layout_mode": layout_mode,
+                # ➕ 新增：傳遞項目信息
+                "project_id": current_session.project_id,
+                "project_name": current_session.project_name,
             },
         )
 

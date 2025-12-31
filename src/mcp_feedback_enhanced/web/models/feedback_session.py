@@ -126,10 +126,20 @@ class WebFeedbackSession:
         summary: str,
         auto_cleanup_delay: int = 3600,
         max_idle_time: int = 1800,
+        project_id: str | None = None,  # ➕ 新增：項目唯一標識
     ):
         self.session_id = session_id
         self.project_directory = project_directory
         self.summary = summary
+        
+        # ➕ 新增：項目標識相關字段
+        if project_id is None:
+            self.project_id = self._generate_project_id(project_directory)
+        else:
+            self.project_id = project_id
+        # 提取項目名稱（用於顯示）
+        self.project_name = Path(project_directory).name if project_directory else "未知項目"
+        
         self.websocket: WebSocket | None = None
         self.feedback_result: str | None = None
         self.images: list[dict] = []
@@ -183,8 +193,32 @@ class WebFeedbackSession:
         self._schedule_auto_cleanup()
 
         debug_log(
-            f"會話 {self.session_id} 初始化完成，自動清理延遲: {auto_cleanup_delay}秒，最大空閒: {max_idle_time}秒"
+            f"會話 {self.session_id} (項目: {self.project_name}, ID: {self.project_id}) "
+            f"初始化完成，自動清理延遲: {auto_cleanup_delay}秒，最大空閒: {max_idle_time}秒"
         )
+
+    @staticmethod
+    def _generate_project_id(project_path: str) -> str:
+        """
+        根據項目路徑生成唯一 ID
+
+        Args:
+            project_path: 項目路徑
+
+        Returns:
+            str: 項目唯一 ID（8位哈希）
+        """
+        import hashlib
+
+        if not project_path or project_path == ".":
+            # 對於當前目錄，使用絕對路徑
+            project_path = str(Path.cwd())
+
+        # 規範化路徑（處理 Windows/Unix 差異）
+        normalized_path = Path(project_path).resolve().as_posix()
+        # 生成 MD5 哈希並取前 8 位
+        hash_obj = hashlib.md5(normalized_path.encode())
+        return hash_obj.hexdigest()[:8]
 
     def get_message_code(self, key: str) -> str:
         """

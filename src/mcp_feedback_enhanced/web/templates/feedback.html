@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{ title }}</title>
+    <title>{{ project_name }} - {{ title }}</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
@@ -20,6 +20,99 @@
     <link rel="stylesheet" href="/static/css/audio-management.css" />
     <link rel="stylesheet" href="/static/css/notification-settings.css" />
     <style>
+      /* ➕ 項目信息橫幅樣式 */
+      .project-info-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      }
+
+      .project-icon {
+        font-size: 28px;
+        line-height: 1;
+      }
+
+      .project-details {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .project-name-large {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 4px;
+        letter-spacing: 0.3px;
+      }
+
+      .project-path-full {
+        font-size: 11px;
+        opacity: 0.9;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        overflow: hidden;
+      }
+
+      #projectPathFullDisplay {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .copy-btn-mini {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        padding: 2px 6px;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 11px;
+        color: white;
+        transition: background 0.2s;
+        flex-shrink: 0;
+      }
+
+      .copy-btn-mini:hover {
+        background: rgba(255,255,255,0.35);
+      }
+
+      .project-id-badge {
+        text-align: right;
+        font-size: 11px;
+        flex-shrink: 0;
+      }
+
+      .project-id-badge .label {
+        opacity: 0.8;
+        margin-right: 4px;
+      }
+
+      .project-id-badge code {
+        background: rgba(255,255,255,0.25);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 11px;
+      }
+
+      /* 響應式設計 */
+      @media (max-width: 768px) {
+        .project-info-banner {
+          flex-direction: column;
+          align-items: flex-start;
+          padding: 10px 15px;
+        }
+        
+        .project-id-badge {
+          text-align: left;
+        }
+      }
+      
       /* 僅保留必要的頁面特定樣式和響應式調整 */
 
       /* 響應式調整 */
@@ -405,6 +498,28 @@
     </style>
   </head>
   <body class="layout-{{ layout_mode }}">
+    <!-- ➕ 項目信息橫幅 -->
+    <div class="project-info-banner">
+      <div class="project-icon">📁</div>
+      <div class="project-details">
+        <div class="project-name-large">{{ project_name }}</div>
+        <div class="project-path-full" title="{{ project_directory }}">
+          <span id="projectPathFullDisplay">{{ project_directory }}</span>
+          <button 
+            class="copy-btn-mini" 
+            onclick="copyToClipboard('{{ project_directory }}', 'project_path')"
+            data-i18n-title="app.clickToCopyPath"
+            title="複製路徑">
+            📋
+          </button>
+        </div>
+      </div>
+      <div class="project-id-badge">
+        <span class="label" data-i18n="app.projectId">項目 ID:</span>
+        <code>{{ project_id }}</code>
+      </div>
+    </div>
+    
     <!-- ===== 頂部連線監控狀態列（緊湊版） ===== -->
     <div class="connection-monitor-bar compact">
       <!-- 標題 -->
@@ -415,8 +530,8 @@
       <!-- 分隔符 -->
       <span class="info-separator">·</span>
 
-      <!-- 專案路徑 -->
-      <div class="project-info-compact">
+      <!-- 專案路徑（保留用於向後兼容，可選擇隱藏） -->
+      <div class="project-info-compact" style="display: none;">
         <span>📂</span>
         <span
           id="projectPathDisplay"
@@ -1919,6 +2034,57 @@
     <!-- 主應用程式 -->
     <script src="/static/js/app.js?v=2025010510"></script>
     <script>
+      // ➕ 複製到剪貼板功能
+      function copyToClipboard(text, type) {
+        navigator.clipboard.writeText(text).then(() => {
+          const messages = {
+            'project_path': '項目路徑已複製',
+            'session_id': '會話 ID 已複製'
+          };
+          
+          // 顯示臨時提示
+          const toast = document.createElement('div');
+          toast.className = 'copy-toast';
+          toast.textContent = messages[type] || '已複製';
+          toast.style.cssText = `
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(102, 126, 234, 0.95);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            z-index: 10000;
+            animation: fadeInOut 2s ease-in-out;
+          `;
+          
+          document.body.appendChild(toast);
+          
+          setTimeout(() => {
+            toast.remove();
+          }, 2000);
+        }).catch(err => {
+          console.error('複製失敗:', err);
+        });
+      }
+      
+      // 添加動畫樣式
+      if (!document.getElementById('copyToastAnimation')) {
+        const style = document.createElement('style');
+        style.id = 'copyToastAnimation';
+        style.textContent = `
+          @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(-10px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      
       // 等待所有模組載入完成後再初始化 FeedbackApp
       async function initializeApp() {
         const sessionId = "{{ session_id }}";
