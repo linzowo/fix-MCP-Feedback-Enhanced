@@ -22,6 +22,20 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+# 抑制 websockets.legacy 和 starlette.templating 的 DeprecationWarning
+# uvicorn 内部使用 websockets.legacy.server，在 websockets >= 15 时会发出弃用警告
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module=r"websockets\.legacy\.server",
+)
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module=r"starlette\.templating",
+)
+
 from ..debug import web_debug_log as debug_log
 from ..utils.error_handler import ErrorHandler, ErrorType
 from ..utils.memory_monitor import get_memory_monitor
@@ -544,6 +558,9 @@ class WebUIManager:
                         port=self.port,
                         log_level="warning",
                         access_log=False,
+                        # WebSocket keepalive: 每 20 秒发送 ping，30 秒无 pong 则断开
+                        ws_ping_interval=20.0,
+                        ws_ping_timeout=30.0,
                     )
 
                     server_instance = uvicorn.Server(config)
@@ -615,8 +632,7 @@ class WebUIManager:
         self.server_thread = threading.Thread(target=run_server_with_retry, daemon=True)
         self.server_thread.start()
 
-        # 等待伺服器啟動
-        time.sleep(2)
+        # 注意：不在此處阻塞等待，改由異步調用方使用 asyncio.sleep 等待
 
     def open_browser(self, url: str):
         """開啟瀏覽器"""
@@ -1138,6 +1154,8 @@ async def launch_web_feedback_ui(
     # 啟動伺服器（如果尚未啟動）
     if manager.server_thread is None or not manager.server_thread.is_alive():
         manager.start_server()
+        # 使用非阻塞等待，避免阻塞 MCP 事件循環
+        await asyncio.sleep(2)
 
     # 檢查是否為桌面模式
     desktop_mode = os.environ.get("MCP_DESKTOP_MODE", "").lower() == "true"

@@ -493,6 +493,12 @@ class WebFeedbackSession:
             self.user_timeout_timer.start()
             debug_log(f"已啟動用戶超時計時器: {timeout_seconds}秒")
 
+    # Windows threading.Event.wait() 的安全上限：
+    # 底層使用 DWORD 毫秒值（最大 4294967295），4294967 * 1000 = 4294967000 未溢出，
+    # 4294968 * 1000 = 4294968000 > UINT32_MAX，會觸發 OverflowError。
+    # 使用分塊等待策略繞過此限制，每次最多等待 30 天。
+    _MAX_WAIT_CHUNK = 2592000  # 30 天（秒），遠低於平台上限，安全可靠
+
     async def wait_for_feedback(self, timeout: int = 600) -> dict[str, Any]:
         """
         等待用戶回饋，包含圖片，支援超時自動清理
@@ -504,7 +510,6 @@ class WebFeedbackSession:
             dict: 回饋結果
         """
         try:
-            # 直接使用用户设置的 timeout，不做调整
             actual_timeout = timeout
             debug_log(
                 f"會話 {self.session_id} 開始等待回饋，超時時間: {actual_timeout} 秒"
@@ -513,7 +518,14 @@ class WebFeedbackSession:
             loop = asyncio.get_event_loop()
 
             def wait_in_thread():
-                return self.feedback_completed.wait(actual_timeout)
+                """分塊等待，避免 Windows 上大超時值導致 OverflowError"""
+                remaining = actual_timeout
+                while remaining > 0:
+                    chunk = min(remaining, WebFeedbackSession._MAX_WAIT_CHUNK)
+                    if self.feedback_completed.wait(chunk):
+                        return True
+                    remaining -= chunk
+                return False
 
             completed = await loop.run_in_executor(None, wait_in_thread)
 
@@ -540,8 +552,10 @@ class WebFeedbackSession:
                 f"等待用戶回饋超時（{actual_timeout}秒），介面已自動關閉"
             )
 
+        except TimeoutError:
+            raise
         except Exception as e:
-            # 任何異常都要確保清理資源
+            # 非超時異常才需要額外清理
             debug_log(f"會話 {self.session_id} 發生異常: {e}")
             await self._cleanup_resources_on_timeout()
             raise
